@@ -28,40 +28,23 @@ mountString = function(treeString) -- Mount a container string
     if treeTbl and type(treeTbl.tree) == "table" and type(treeTbl.meta) == "table" then -- If it unserialized, set the container and meta variables
         local container = treeTbl.tree -- Tree
         local meta = treeTbl.meta -- Tree meta information (read only, etc.)
+        local combine = _G.fs.combine
         local fsys = {} -- Mountable File system functions
         local vfs_id = drive_id -- vfs drive ID
         drive_id = drive_id+1 -- Adding 1 to it for the next mount
 
         local function formatDir(str)
             local dir = {}
-            while true do
-                local pos = str:find("/") or str:find("\\") or str:find("*") -- Find slashes and asterisks
-                if pos == 1 then -- Remove leading slashes/asterisks
-                    str = str:sub(2, -1)
-                elseif pos then -- Add directory to list and remove it from the string
-                    dir[#dir+1] = str:sub(1, pos-1)
-                    str = str:sub(pos+1, -1)
-                else -- Add remaning file/directory to list and return list
-                    if str == ".." then
-                        dir[#dir] = nil
-                    else
-                        dir[#dir+1] = str
-                    end
-                    for i = 1, #dir do
-                        if dir[i] == "" then
-                            table.remove(dir, i)
-                        end
-                        if dir[i] == ".." and dir[i-1] then
-                            table.remove(dir, i-1)
-                            table.remove(dir, i)
-                        end
-                    end
-                    if dir[1] == "." then
-                        table.remove(dir, 1)
-                    end
-                    return dir
-                end
+            str = combine(str, "").."/"
+            while str ~= "" do 
+                local pos = str:find("/")
+                dir[#dir+1] = str:sub(1, pos-1)
+                str = str:sub(pos+1, -1)
             end
+            if dir[1] == "" then
+                table.remove(dir)
+            end
+            return dir
         end
 
         local function genDir(tree, meta, temp) -- Generates/follows a path and returns it
@@ -102,13 +85,17 @@ mountString = function(treeString) -- Mount a container string
         end
 
         local function checkPaths(pathStr)
-            local list = fsys.list(pathStr)
-            for i = 1, #list do
+            if fsys.exists(pathStr) and fsys.isDir(pathStr) then
+                local list = fsys.list(pathStr)
+                for i = 1, #list do
+                    if fsys.isReadOnly(pathStr) then
+                        error(pathStr..": Access denied", 3)
+                    end
+                    checkPaths(pathStr.."/"..list[i])
+                end
+            else
                 if fsys.isReadOnly(pathStr) then
                     error(pathStr..": Access denied", 3)
-                end
-                if fsys.isDir(pathStr.."/"..list[i]) then
-                    checkPaths(pathStr.."/"..list[i])
                 end
             end
         end
@@ -280,14 +267,7 @@ mountString = function(treeString) -- Mount a container string
             end
         end
 
-        fsys.combine = function(pathA, pathB) -- Combine two paths to make a single coherent path string
-            local dirA = formatDir(pathA)
-            local dirB = formatDir(pathB)
-            for i = 1, #dirB do 
-                dirA[#dirA+1] = dirB[i]
-            end
-            return "/"..table.concat(dirA, "/")
-        end
+        fsys.combine = combine -- Combine two paths to make a single coherent path string
 
         fsys.find = function(wildcard) -- Find a path/paths to a file using wildcard magic
             wildcard = table.concat(formatDir(wildcard), "/") -- Body donated to harbor by gollark, from PotatOS, and apparently indirectly from cclite:
@@ -362,8 +342,12 @@ mountString = function(treeString) -- Mount a container string
                         end
                         if not num then num = 1 end
                         local out = file:sub(start, num)
-                        start = num
-                        return out
+                        start = start + num
+                        if start < #file then
+                            return out
+                        else
+                            return nil
+                        end
                     end,
                     readAll = function()
                         if closed then 
@@ -379,7 +363,15 @@ mountString = function(treeString) -- Mount a container string
                         end
                         local out = file:sub(start, -1)
                         local loc = out:find("\n")
-                        return out:sub(1, loc)
+                        if loc then
+                            start = start + loc
+                        end
+                        local str = out:sub(start, loc)
+                        if str == "" then
+                            return nil
+                        else
+                            return str
+                        end
                     end
                 }
                 return rTable
@@ -419,7 +411,7 @@ mountString = function(treeString) -- Mount a container string
                 return wTable
             end
         end
-        return fsys
+        return fsys, treeTbl
     else -- Or error
         error("Invalid harbor object", 2)
     end
@@ -434,4 +426,83 @@ mountFile = function(treePath) -- Mount a container file
     else -- Or error
         error("Path to harbor is not a valid file or does not exist", 2)
     end
+end
+
+convert = function(path)
+    path = fs.combine(path, "")
+    local function r(path, har, met, orig)
+        local _, pos = path:find(orig)
+        local relPath = path:sub(pos, -1)
+        local list = fs.list(path)
+        local tree = {}
+        local meta = {}
+        for i = 1, #list do
+            if fs.isReadOnly(path.."/"..list[i]) then
+                local m
+                local str = ""
+                if relPath ~= "" then
+                    str = relPath.."/"..list[i].."/"
+                else
+                    str = list[i].."/"
+                end
+                while str ~= "" do 
+                    local pos = str:find("/")
+                    local k = str:sub(1, pos-1)
+                    meta[k] = {}
+                    m = meta[k]
+                    str = str:sub(pos+1, -1)
+                end
+                m.readOnly = true
+            end
+            if fs.isDir(path.."/"..list[i]) then
+                tree[ list[i] ], meta[ list[i] ] = r(path.."/"..list[i], tree, meta, orig)
+            else
+                local file = fs.open(path.."/"..list[i], "r")
+                tree[ list[i] ] = file:readAll()
+                meta[ list[i] ] = {} -- For consistencies sake
+                file:close()
+            end
+        end
+        return tree, meta
+    end
+    local tree, meta = r(path, {}, {}, path)
+    return {tree=tree, meta=meta}
+end
+
+runExternal = function(hvfs, program)
+    print(hvfs.getDrive(""), hvfs)
+    if type(hvfs) ~= "table" then
+        error("bad argument #1 (table expected, got "..type(hvfs)")", 2)
+    elseif type(program) ~= "string" then
+        error("bad argument #2 (string expected, got "..type(program)")", 2)
+    end
+    for k, _ in pairs(_G.fs) do
+        if not hvfs[k] then
+            error("invalid harbor virtual filesystem API", 2)
+        end
+    end
+    local env = {fs = hvfs}
+    setmetatable(env, { __index = _ENV })
+    --[[for k, v in pairs(_G) do
+        if v ~= _G then
+            if v == _G.fs then
+                env[k] = hvfs
+                print("here")
+            else
+                env[k] = v
+            end
+        else
+            env[k] = env
+        end
+    end]]
+    print(hvfs, _G.fs, env.fs, env)
+    if not (fs.exists(program) and not fs.isDir(program)) then
+        error("No such file "..program, 2)
+    end
+    local func, err = loadfile(program, env)
+    if not func then
+        error("Compilation error: "..err, 2)
+    end
+    --setfenv(func, env)
+    return pcall(func)
 end
