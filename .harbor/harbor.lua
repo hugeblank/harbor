@@ -4,8 +4,7 @@ if not drive_id then
     _G.drive_id = 0 -- Globally keep track of the hvfs volume IDs
 end
 
-mountString = function(treeString) -- Mount a container string
-    local treeTbl = textutils.unserialize(treeString)
+mountTable = function(treeTbl) -- Mount a harbor table
     if treeTbl and type(treeTbl.tree) == "table" and type(treeTbl.meta) == "table" then -- If it unserialized, set the container and meta variables
         local container = treeTbl.tree -- Tree
         local meta = treeTbl.meta -- Tree meta information (read only, etc.)
@@ -461,6 +460,10 @@ mountString = function(treeString) -- Mount a container string
     end
 end
 
+mountString = function(treeString) -- Mount a container string 
+    return mountTable(textutils.unserialize(treeString))
+end
+
 mountFile = function(treePath) -- Mount a container file
     if fs.exists(treePath) and not fs.isDir(treePath) then -- Check it actually exists and isn't a directory
         local harbor = fs.open(treePath, "r") -- Read it
@@ -540,7 +543,7 @@ bootVFS = function(hvfs)
         shell.run('/startup.lua') -- Run the startup file in the VFS (there better be one)
         os.reboot() -- Reboot when execution has been completed
     ]]
-    file.write("local hvfs = textutils.serialize("..textutils.serialize(hvfs.dir)..")\nos.loadAPI('/.harbor/harbor.lua')\nlocal out = harbor.mountString(hvfs)\nos.unloadAPI('/.harbor/harbor.lua')\nif term.isColor() then\n  os.run({},'/.harbor/multishell.lua')\nend\nos.run({}, '/.harbor/shell.lua')\nfs.delete('/startup.lua')\nif fs.exists('/.harbor/startup.lua') then\n  fs.move('/.harbor/startup.lua', '/startup.lua')\nend\n_G.fs = out.fs\nshell.run('/startup.lua')\nos.reboot()")
+    file.write("local hvfs = "..textutils.serialize(hvfs.dir).."\nos.loadAPI('/.harbor/harbor.lua')\nlocal out = harbor.mountTable(hvfs)\nos.unloadAPI('/.harbor/harbor.lua')\nif term.isColor() then\n  os.run({},'/.harbor/multishell.lua')\nend\nos.run({}, '/.harbor/shell.lua')\nfs.delete('/startup.lua')\nif fs.exists('/.harbor/startup.lua') then\n  fs.move('/.harbor/startup.lua', '/startup.lua')\nend\n_G.fs = out.fs\nshell.run('/startup.lua')\nos.reboot()")
     file.close()
     os.reboot() -- Let's begin execution
 end
