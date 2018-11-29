@@ -1,19 +1,11 @@
 -- Harbor - By hugeblank
--- Executable compression 
-if not fs.exists("/.harbor/bbpack.lua") then
-    local bbpdown = http.get("https://pastebin.com/raw/cUYTGbpb")
-    local bbpfile = fs.open("/.harbor/bbpack.lua", "w")
-    bbpfile.write(bbpdown:readAll())
-    bbpfile:close()
-    bbpdown:close()
-end
 
 local harbor = {}
 harbor.mountTable = function(treeTbl) -- Mount a harbor table
     if treeTbl and type(treeTbl.tree) == "table" and type(treeTbl.meta) == "table" then -- If it unserialized, set the container and meta variables
         local container = treeTbl.tree -- Tree
         local meta = treeTbl.meta -- Tree meta information (read only, etc.)
-        local combine = _G.fs.combine
+        local combine = _G.fs.combine -- fs.combine ain't anything crazy
         local fsys = {} -- Mountable File system functions
 
         local function formatDir(str) -- Formats a directory path to a table
@@ -478,98 +470,45 @@ harbor.mountFile = function(treePath) -- Mount a container file
     end
 end
 
-harbor.convert = function(path)
-    path = fs.combine(path, "")
-    local function r(path, har, met, orig)
-        local _, pos = path:find(orig)
-        local relPath = path:sub(pos, -1)
-        local list = fs.list(path)
-        local tree = {}
-        local meta = {}
-        for i = 1, #list do
-            if fs.isReadOnly(path.."/"..list[i]) then
+harbor.convert = function(path) -- Convert a directory path into a harbor tree and meta table for VFS mounting
+    path = fs.combine(path, "") -- Make the path a program readable path
+    local function r(path, har, met, orig) -- Recursive function taking in the path table, current tree, current meta, and the original path to compare to
+        local _, pos = path:find(orig) -- Find where the base path is in relation to the actual path string
+        local relPath = path:sub(pos, -1) -- Remove it to get the relative path
+        local list = fs.list(path) -- List all the contents on path
+        local tree = {} -- Blank tree table
+        local meta = {} -- Blank meta table
+        for i = 1, #list do -- for each thing in list
+            if fs.isReadOnly(path.."/"..list[i]) then -- If it's reat only
                 local m
                 local str = ""
-                if relPath ~= "" then
+                if relPath ~= "" then -- Set the correct path
                     str = relPath.."/"..list[i].."/"
                 else
                     str = list[i].."/"
                 end
-                while str ~= "" do 
-                    local pos = str:find("/")
-                    local k = str:sub(1, pos-1)
-                    meta[k] = {}
-                    m = meta[k]
-                    str = str:sub(pos+1, -1)
+                while str ~= "" do -- Repeat until the string is blank
+                    local pos = str:find("/") -- Find the next slash
+                    local k = str:sub(1, pos-1) -- remove it from the string and output the result to k
+                    meta[k] = {} -- Create a blank table for the file/directory
+                    m = meta[k] -- set m equal to it
+                    str = str:sub(pos+1, -1) -- Set str from the char after the slash to the end
                 end
-                m.readOnly = true
+                m.readOnly = true -- set readOnly to true
             end
-            if fs.isDir(path.."/"..list[i]) then
-                tree[ list[i] ], meta[ list[i] ] = r(path.."/"..list[i], tree, meta, orig)
-            else
-                local file = fs.open(path.."/"..list[i], "r")
-                tree[ list[i] ] = file:readAll()
+            if fs.isDir(path.."/"..list[i]) then -- If the thing is a directory
+                tree[ list[i] ], meta[ list[i] ] = r(path.."/"..list[i], tree, meta, orig) -- Recurse into it
+            else -- If the thing is a file
+                local file = fs.open(path.."/"..list[i], "r") -- Open it
+                tree[ list[i] ] = file:readAll() -- Read it into the tree as its name
                 meta[ list[i] ] = {} -- For consistencies sake
-                file:close()
+                file:close() -- And close
             end
         end
-        return tree, meta
+        return tree, meta -- Return the completed tree and meta tables
     end
-    local tree, meta = r(path, {}, {}, path)
-    return {tree=tree, meta=meta}
-end
-
-harbor.genExec = function(path)
-    os.loadAPI("/.harbor/bbpack.lua")
-    local bbpack = {}
-    bbpack = _G.bbpack
-    _G.bbpack = nil
-    return 
-[[os.loadAPI("/.harbor/bbpack.lua")
-local bbpack = {}
-for k, v in pairs(_G.bbpack) do
-    bbpack[k] = v
-end
-_G.bbpack = nil    
-local boot = ]]..textutils.serialize([[
-os.loadAPI("/.harbor/bbpack.lua")
-local bbpack = {}
-bbpack = _G.bbpack
-_G.bbpack = nil
-local args = {...}
-local hvfs = args[1]
-table.remove(args, 1)
-local vfs = loadfile("/.harbor/harbor.lua")().mountTable(hvfs)
-local str = "this title is deliberately unique such that it's a pain to replicate"
-multishell.setTitle(multishell.getCurrent(), str)
-while multishell.getCount() ~= 1 do
-    if multishell.getTitle(1) ~= str then
-        multishell.setFocus(1)
-        os.queueEvent("terminate")
-    else
-        multishell.setFocus(2)
-        os.queueEvent("terminate")
-    end
-    sleep()
-end
-if term.isColor() then
-    os.run({},'/.harbor/multishell.lua')
-end
-os.run({}, '/.harbor/shell.lua')
-local old = _G.fs
-_G.fs = vfs
-shell.run('startup.lua', unpack(args))
-term.clear()
-term.setCursorPos(1, 1)
-_G.fs = old
-fs.delete(shell.getRunningProgram())
-local file = fs.open(shell.getRunningProgram(), "w")
-file.write('os.loadAPI("/.harbor/bbpack.lua")\nlocal bbpack = {}\nbbpack = _G.bbpack\n_G.bbpack = nil\nlocal boot = '..textutils.serialize(boot)..'\nboot = \'local boot = \'..textutils.serialise(boot)..\'\\n\'..boot'.."\nload(boot, 'hvfs', nil, _ENV)(textutils.unserialize(bbpack.decompress(bbpack.fromBase64(\'"..bbpack.toBase64(bbpack.compress(textutils.serialise(hvfs), 128)).."\'), true, 128)), ...)")
-file.close()]])..'\n'..[[
-boot = 'local boot = '..textutils.serialise(boot)..'\n'..boot
-local exe = textutils.unserialize(bbpack.decompress(bbpack.fromBase64("]]..bbpack.toBase64(bbpack.compress(textutils.serialise(harbor.convert(path)), 128))..[["), true, 128))
-load(boot, "hvfs", nil, _ENV)(exe, ...)
-]]
+    local tree, meta = r(path, {}, {}, path) -- Get the base tree and meta tables
+    return {tree=tree, meta=meta} -- Return the result as a virtual filesystem
 end
 
 return harbor
