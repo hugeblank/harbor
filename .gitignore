@@ -1,2 +1,3 @@
-/tests
 /*.hvfs
+/.harbor/bbpack.lua
+*enchat

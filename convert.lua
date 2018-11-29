@@ -1,5 +1,5 @@
 local args = {...}
-local genExec = require("harbor").genExec
+local genExec = loadfile("/.harbor/harbor.lua")().genExec
 if fs.exists(args[1]) then
     if fs.isDir(args[1]) then
         local file = fs.open(fs.getName(args[1])..".hvfs", "w")

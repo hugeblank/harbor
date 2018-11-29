@@ -1,4 +1,13 @@
--- HARBOR - By hugeblank
+-- Harbor - By hugeblank
+-- Executable compression 
+if not fs.exists("/.harbor/bbpack.lua") then
+    local bbpdown = http.get("https://pastebin.com/raw/cUYTGbpb")
+    local bbpfile = fs.open("/.harbor/bbpack.lua", "w")
+    bbpfile.write(bbpdown:readAll())
+    bbpfile:close()
+    bbpdown:close()
+end
+
 local harbor = {}
 harbor.mountTable = function(treeTbl) -- Mount a harbor table
     if treeTbl and type(treeTbl.tree) == "table" and type(treeTbl.meta) == "table" then -- If it unserialized, set the container and meta variables
@@ -511,11 +520,26 @@ harbor.convert = function(path)
 end
 
 harbor.genExec = function(path)
+    os.loadAPI("/.harbor/bbpack.lua")
+    local bbpack = {}
+    bbpack = _G.bbpack
+    _G.bbpack = nil
     return 
-[[local boot = ]]..textutils.serialize([[
+[[os.loadAPI("/.harbor/bbpack.lua")
+local bbpack = {}
+for k, v in pairs(_G.bbpack) do
+    bbpack[k] = v
+end
+_G.bbpack = nil    
+local boot = ]]..textutils.serialize([[
+os.loadAPI("/.harbor/bbpack.lua")
+local bbpack = {}
+bbpack = _G.bbpack
+_G.bbpack = nil
 local args = {...}
 local hvfs = args[1]
 table.remove(args, 1)
+local vfs = loadfile("/.harbor/harbor.lua")().mountTable(hvfs)
 local str = "this title is deliberately unique such that it's a pain to replicate"
 multishell.setTitle(multishell.getCurrent(), str)
 while multishell.getCount() ~= 1 do
@@ -528,24 +552,23 @@ while multishell.getCount() ~= 1 do
     end
     sleep()
 end
-local harbor = require("harbor")
-local out = harbor.mountTable(hvfs)
 if term.isColor() then
     os.run({},'/.harbor/multishell.lua')
 end
 os.run({}, '/.harbor/shell.lua')
 local old = _G.fs
-_G.fs = out
+_G.fs = vfs
 shell.run('startup.lua', unpack(args))
 term.clear()
 term.setCursorPos(1, 1)
 _G.fs = old
 fs.delete(shell.getRunningProgram())
 local file = fs.open(shell.getRunningProgram(), "w")
-file.write('local boot = '..textutils.serialize(boot)..'\nboot = \'local boot = \'..textutils.serialise(boot)..\'\\n\'..boot'.."\nload(boot, 'hvfs', nil, _ENV)("..textutils.serialize(hvfs)..", ...)")
+file.write('os.loadAPI("/.harbor/bbpack.lua")\nlocal bbpack = {}\nbbpack = _G.bbpack\n_G.bbpack = nil\nlocal boot = '..textutils.serialize(boot)..'\nboot = \'local boot = \'..textutils.serialise(boot)..\'\\n\'..boot'.."\nload(boot, 'hvfs', nil, _ENV)(textutils.unserialize(bbpack.decompress(bbpack.fromBase64(\'"..bbpack.toBase64(bbpack.compress(textutils.serialise(hvfs), 128)).."\'), true, 128)), ...)")
 file.close()]])..'\n'..[[
 boot = 'local boot = '..textutils.serialise(boot)..'\n'..boot
-load(boot, "hvfs", nil, _ENV)(]]..textutils.serialize(harbor.convert(path))..[[, ...)
+local exe = textutils.unserialize(bbpack.decompress(bbpack.fromBase64("]]..bbpack.toBase64(bbpack.compress(textutils.serialise(harbor.convert(path)), 128))..[["), true, 128))
+load(boot, "hvfs", nil, _ENV)(exe, ...)
 ]]
 end
 
