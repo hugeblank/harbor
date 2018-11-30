@@ -500,4 +500,29 @@ harbor.convert = function(path) -- Convert a directory path into a harbor tree a
     return {tree=tree, meta=meta} -- Return the result as a virtual filesystem
 end
 
+harbor.revert = function(hfs, path) -- Convert a harbor virtual filesystem to a normal directory structure in the desired path
+    path = fs.combine(path, "") -- Make the path a valid scopable string
+    local function scope(path) -- Recursive function to scope into all parts of the file structure
+        local stuff = hfs.list(path) -- List the contents in the directory
+        for i = 1, #stuff do -- For each item
+            local sPath = hfs.combine(path, stuff[i]) -- Combine the path with the item name
+            if hfs.isDir(sPath) then -- If it's a directory
+                scope(sPath) -- Scope into it
+            else -- OTHERWISE
+                local string = hfs.open(sPath, "r") -- Open the virtual file
+                local file = fs.open(sPath, "w") -- Open a file in the parent fs
+                file.write(string.readAll()) -- Write the contents of the virtual file to the parent file
+                string.close() -- Close one
+                file.close() -- And then the other
+            end
+        end
+    end
+    if not fs.isReadOnly(path) then
+        scope(path) -- Scope into the desired path
+        return true
+    else
+        return false
+    end
+end
+
 return harbor
