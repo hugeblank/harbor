@@ -60,24 +60,25 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
         end
 
         local function checkPaths(pathStr) -- Check the read only meta information of the contents below this location
-            if fsys.exists(pathStr) and fsys.isDir(pathStr) then -- If exists and is a directory
+            if fsys.isDir(pathStr) then -- If exists and is a directory
                 local list = fsys.list(pathStr) -- List it
                 for i = 1, #list do
-                    if fsys.isReadOnly(pathStr) then -- If this directory read only exit
+                    if fsys.isReadOnly(pathStr) then -- If this directory is read only, exit
                         return false, pathStr
                     end
-                    return checkPaths(pathStr.."/"..list[i]) -- Recursion! Check the contents of this directory
+                    return ({checkPaths(pathStr.."/"..list[i])})[1], pathStr -- Recursion! Check the contents of this directory
                 end
             else
-                if fsys.isReadOnly(pathStr) then -- If this file is read only exit
+                if fsys.isReadOnly(pathStr) then -- If this file is read only, exit
                     return false, pathStr
                 end
             end
+            return true, pathStr
         end
 
         fsys.exists = function(path) -- Check if path exists within the container
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             local out = exists(dir)
@@ -86,7 +87,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
         
         fsys.isDir = function(path) -- Check if a directory exists within the container
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             local ex, harbor = exists(dir)
@@ -99,13 +100,13 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
         
         fsys.isReadOnly = function(path) -- Check if the file/directory is read only. If a parent is read only, everything else contained will be too
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             local ex = exists(dir)
             if ex then 
                 local i = #dir
-                while i > 1 do -- Check read only status of path leading up to the end
+                while i > 0 do -- Check read only status of path leading up to the end
                     if meta[dir[i]] then
                         if meta[dir[i]].readOnly then
                             return true
@@ -121,7 +122,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
         
         fsys.getName = function(path) -- Gets the name of the last path component
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path) 
             if #dir == 0 then -- If this is the root directory, return root. shocker.
@@ -133,7 +134,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
         
         fsys.getDrive = function(path) -- Gets the name of the drive path is in
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             if dir[1] == "rom" and fsys.exists(path) then -- If the drive is read only memory, return rom
@@ -150,7 +151,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.getSize = function(path) -- Gets the size of the file at path
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             local ex, file = exists(dir)
@@ -183,7 +184,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.getDir = function(path) -- Gets the parent directory of path
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             if #dir > 1 then -- If it's not just '/' iterate over each path directory, adding it to the string
@@ -201,20 +202,20 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.makeDir = function(path) -- Makes a new directory at path
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             local tree = genDir(container, meta, dir)
             if not tree then
-                error("/"..table.concat(dir, "/")..": Access denied", 2)
+                error(fs.combine(table.concat(dir, "/"), "")..": Access denied", 2)
             end
         end
 
         fsys.move = function(fromPath, toPath) -- Move a directory from one place to another while also obeying read only laws
             if type(fromPath) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(fromPath)")", 2)
+                error("bad argument #1 (string expected, got "..type(fromPath)..")", 2)
             elseif type(toPath) ~= "string" then
-                error("bad argument #2 (string expected, got "..type(toPath)")", 2)
+                error("bad argument #2 (string expected, got "..type(toPath)..")", 2)
             end
             local fromPath = formatDir(fromPath)
             local toPath = formatDir(toPath)
@@ -226,13 +227,13 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
             local toTree = genDir(container, meta, toPath) -- Scoping to directories
             local fromTree = genDir(container, meta, fromPath)
             if not toTree then -- Bad touch
-                error(error("/"..table.concat(toPath, "/")..": Access denied", 2))
+                error(error(fs.combine(table.concat(toPath, "/"), "")..": Access denied", 2))
             elseif not fromTree then
-                error("/"..table.concat(fromPath, "/")..": Access denied", 2)
+                error(fs.combine(table.concat(fromPath, "/"), "")..": Access denied", 2)
             end
             local pass, pstr = checkPaths(table.concat(dir, "/"))
                 if not pass then -- Make sure all contents are not read only
-                    error(pstr..": Access denied", 2)
+                    error(fs.combine(pstr, "")..": Access denied", 2)
                 end
             for k, v in pairs(fromTree) do
                 toTree[k] = v
@@ -244,9 +245,9 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.copy = function(fromPath, toPath) -- Copy a directory from one place to another while also obeying the read only laws of the land
             if type(fromPath) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(fromPath)")", 2)
+                error("bad argument #1 (string expected, got "..type(fromPath)..")", 2)
             elseif type(toPath) ~= "string" then
-                error("bad argument #2 (string expected, got "..type(toPath)")", 2)
+                error("bad argument #2 (string expected, got "..type(toPath)..")", 2)
             end
             local fromPath = formatDir(fromPath)
             local toPath = formatDir(toPath)
@@ -258,7 +259,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
             local toTree = genDir(container, meta, toPath)
             local fromTree = genDir(container, meta, fromPath)
             if not toTree then
-                error(error("/"..table.concat(toPath, "/")..": Access denied", 2))
+                error(fs.combine(table.concat(toPath, "/"), " ")..": Access denied", 2)
             end
             for k, v in pairs(fromTree) do -- Moving it all
                 toTree.k = v
@@ -267,17 +268,17 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.delete = function(path) -- Delete a file or directory on the condition that it and its contents aren't read only
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             end
             local dir = formatDir(path)
             if exists(dir) then
                 local tree = genDir(container, meta, dir)
                 if not tree then
-                    error("/"..table.concat(dir, "/")..": Access denied", 2)
+                    error(fs.combine(table.concat(dir, "/"), "")..": Access denied", 2)
                 end
                 local pass, pstr = checkPaths(table.concat(dir, "/"))
                 if not pass then -- Make sure all contents are not read only
-                    error(pstr..": Access denied", 2)
+                    error(fs.combine(pstr, "")..": Access denied", 2)
                 end
                 local dirName = table.remove(dir) -- Scope up one, and set the key to nil
                 local stepUp = genDir(container, meta, dir)
@@ -289,7 +290,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.find = function(wildcard) -- Find a path/paths to a file using wildcard magic
             if type(wildcard) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(wildcard)")", 2)
+                error("bad argument #1 (string expected, got "..type(wildcard)..")", 2)
             end
             wildcard = table.concat(formatDir(wildcard), "/") -- Body donated to harbor by gollark, from PotatOS, and apparently indirectly from cclite:
             local function recurse_spec(results, path, spec) -- From here: https://github.com/Sorroko/cclite/blob/62677542ed63bd4db212f83da1357cb953e82ce3/src/emulator/native_api.lua
@@ -318,9 +319,9 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.complete = function(str, path, files, slashes) -- Provide a table of suggetions for the string given based off of what is in the path
             if type(str) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(str)")", 2)
+                error("bad argument #1 (string expected, got "..type(str)..")", 2)
             elseif type(path) ~= "string" then
-                error("bad argument #2 (string expected, got "..type(path)")", 2)
+                error("bad argument #2 (string expected, got "..type(path)..")", 2)
             end
             if files == nil then files = true end -- Making sure files and slashes are set to default, true
             if slashes == nil then slashes = true end
@@ -345,9 +346,9 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 
         fsys.open = function(path, mode) -- Open a file
             if type(path) ~= "string" then
-                error("bad argument #1 (string expected, got "..type(path)")", 2)
+                error("bad argument #1 (string expected, got "..type(path)..")", 2)
             elseif type(mode) ~= "string" then
-                error("bad argument #2 (string expected, got "..type(mode)")", 2)
+                error("bad argument #2 (string expected, got "..type(mode)..")", 2)
             end
             local path = formatDir(path)
             local harbor = container
@@ -393,15 +394,17 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
                             error("attempt to use closed file", 2)
                         end
                         local out = file:sub(start, -1)
-                        local loc = out:find("\n")
+                        local loc = out:find('\n')
+                        local str = ""
                         if loc then
+                            str = out:sub(1, loc-1)
                             start = start + loc
-                        end
-                        local str = out:sub(start, loc)
-                        if str == "" then
-                            return nil
-                        else
                             return str
+                        else
+                            start = #file+1
+                            if out ~= "" then
+                                return out
+                            end
                         end
                     end
                 }
@@ -456,7 +459,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
 end
 
 harbor.mountString = function(treeString) -- Mount a container string 
-    return mountTable(textutils.unserialize(treeString))
+    return harbor.mountTable(textutils.unserialize(treeString))
 end
 
 harbor.mountFile = function(treePath) -- Mount a container file
@@ -479,23 +482,6 @@ harbor.convert = function(path) -- Convert a directory path into a harbor tree a
         local tree = {} -- Blank tree table
         local meta = {} -- Blank meta table
         for i = 1, #list do -- for each thing in list
-            if fs.isReadOnly(path.."/"..list[i]) then -- If it's reat only
-                local m
-                local str = ""
-                if relPath ~= "" then -- Set the correct path
-                    str = relPath.."/"..list[i].."/"
-                else
-                    str = list[i].."/"
-                end
-                while str ~= "" do -- Repeat until the string is blank
-                    local pos = str:find("/") -- Find the next slash
-                    local k = str:sub(1, pos-1) -- remove it from the string and output the result to k
-                    meta[k] = {} -- Create a blank table for the file/directory
-                    m = meta[k] -- set m equal to it
-                    str = str:sub(pos+1, -1) -- Set str from the char after the slash to the end
-                end
-                m.readOnly = true -- set readOnly to true
-            end
             if fs.isDir(path.."/"..list[i]) then -- If the thing is a directory
                 tree[ list[i] ], meta[ list[i] ] = r(path.."/"..list[i], tree, meta, orig) -- Recurse into it
             else -- If the thing is a file
@@ -503,6 +489,9 @@ harbor.convert = function(path) -- Convert a directory path into a harbor tree a
                 tree[ list[i] ] = file:readAll() -- Read it into the tree as its name
                 meta[ list[i] ] = {} -- For consistencies sake
                 file:close() -- And close
+            end
+            if fs.isReadOnly(fs.combine(path, list[i])) then -- If it's read only
+                meta[list[i]].readOnly = true -- Make it read only, shocker right?
             end
         end
         return tree, meta -- Return the completed tree and meta tables
