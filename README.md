@@ -9,7 +9,7 @@ For the harbor API alone:
 For the harbor API and a kit of tools to use it with:
 `pastebin run ivRuuLSH extras`
 
-Note on loading: harbor.lua is located in the `.harbor` directory. Since you can't simply run `require('.harbor.harbor')` (note the '.' that keeps the directory hidden), in order to properly load it, you have to run `loadfile('.harbor/harbor.lua')()`. Another probably more fiable option would be to copy `harbor.lua` into your root directory, that would work too.
+Note on loading: harbor.lua is located in the `.harbor` directory. Since you can't simply run `require('.harbor.harbor')` (note the '.' that keeps the directory hidden), in order to properly load it, you have to run `loadfile('.harbor/harbor.lua')()`. Another probably more viable option would be to copy `harbor.lua` into your root directory, that would work too.
 
 ## API Usage: 
 `mountTable`: creates a fs API bound to the Harbor VFS tree passed in
