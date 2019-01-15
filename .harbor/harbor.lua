@@ -145,7 +145,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
         end
 
         fsys.getFreeSpace = function() -- Gets the free space of the computer
-            return "unlimited" -- It's a variable so I'm not wrong... 
+            return 0 -- It's a variable so I'm not wrong... 
             --but there's some potential here for a meta "size" functionality that limits the amount of data allocated to each directory
         end
 
@@ -332,10 +332,10 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
                     local ma, mb = k:find(str)
                     if ma == 1 then
                         if type(v) == "table" or files then
-                            out[#out+1] = k:sub(mb+1, -1)
                             if slashes then
                                 out[#out+1] = k:sub(mb+1, -1).."/"
                             end
+                            out[#out+1] = k:sub(mb+1, -1)
                         end
 
                     end
