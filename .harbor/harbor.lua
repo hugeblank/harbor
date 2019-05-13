@@ -464,10 +464,10 @@ end
 
 harbor.mountFile = function(treePath) -- Mount a container file
     if fs.exists(treePath) and not fs.isDir(treePath) then -- Check it actually exists and isn't a directory
-        local harbor = fs.open(treePath, "r") -- Read it
-        local tree = harbor:readAll()
-        harbor:close()
-        return mountString(tree) -- Mount it as a string
+        local file = fs.open(treePath, "r") -- Read it
+        local tree = file:readAll()
+        file:close()
+        return harbor.mountString(tree) -- Mount it as a string
     else -- Or error
         error("Path to harbor is not a valid file or does not exist", 2)
     end
