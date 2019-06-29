@@ -1,11 +1,11 @@
--- Harbor - By hugeblank
+-- Harbor by hugeblank
 
 local harbor = {}
 harbor.mountTable = function(treeTbl) -- Mount a harbor table
     if treeTbl and type(treeTbl.tree) == "table" and type(treeTbl.meta) == "table" then -- If it unserialized, set the container and meta variables
         local container = treeTbl.tree -- Tree
         local meta = treeTbl.meta -- Tree meta information (read only, etc.)
-        local combine = _G.fs.combine -- fs.combine ain't anything crazy
+        local combine, getFreeSpace = _G.fs.combine, _G.fs.getFreeSpace -- fs.combine and .getFreeSpace ain't anything crazy
         local fsys = {} -- Mountable File system functions
 
         local function formatDir(str) -- Formats a directory path to a table
@@ -144,10 +144,7 @@ harbor.mountTable = function(treeTbl) -- Mount a harbor table
             end
         end
 
-        fsys.getFreeSpace = function() -- Gets the free space of the computer
-            return 0 -- It's a variable so I'm not wrong... 
-            --but there's some potential here for a meta "size" functionality that limits the amount of data allocated to each directory
-        end
+        fsys.getFreeSpace = getFreeSpace -- Gets the free space of the computer
 
         fsys.getSize = function(path) -- Gets the size of the file at path
             if type(path) ~= "string" then
@@ -475,15 +472,11 @@ end
 
 harbor.convert = function(path) -- Convert a directory path into a harbor tree and meta table for VFS mounting
     path = fs.combine(path, "") -- Make the path a program readable path
-    local function r(path, har, met, orig) -- Recursive function taking in the path table, current tree, current meta, and the original path to compare to
-        local _, pos = path:find(orig) -- Find where the base path is in relation to the actual path string
-        local relPath = path:sub(pos, -1) -- Remove it to get the relative path
-        local list = fs.list(path) -- List all the contents on path
-        local tree = {} -- Blank tree table
-        local meta = {} -- Blank meta table
+    local function r(path) -- Recursive function taking in the path table, current tree, current meta, and the original path to compare to
+        local list, tree, meta = fs.list(path), {}, {} -- List all the contents on path, define tables to output
         for i = 1, #list do -- for each thing in list
             if fs.isDir(path.."/"..list[i]) then -- If the thing is a directory
-                tree[ list[i] ], meta[ list[i] ] = r(path.."/"..list[i], tree, meta, orig) -- Recurse into it
+                tree[ list[i] ], meta[ list[i] ] = r(path.."/"..list[i]) -- Recurse into it
             else -- If the thing is a file
                 local file = fs.open(path.."/"..list[i], "r") -- Open it
                 tree[ list[i] ] = file:readAll() -- Read it into the tree as its name
@@ -496,7 +489,7 @@ harbor.convert = function(path) -- Convert a directory path into a harbor tree a
         end
         return tree, meta -- Return the completed tree and meta tables
     end
-    local tree, meta = r(path, {}, {}, path) -- Get the base tree and meta tables
+    local tree, meta = r(path) -- Get the base tree and meta tables
     return {tree=tree, meta=meta} -- Return the result as a virtual filesystem
 end
 
